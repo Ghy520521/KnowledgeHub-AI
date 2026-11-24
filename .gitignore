@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+storage/
+reports/
+*.db
+.venv/
+venv/
+.idea/
+# 面试笔记（不想公开就保留这两行，想公开就删掉）
+面试准备*.md
+Thumbs.db
+.DS_Store

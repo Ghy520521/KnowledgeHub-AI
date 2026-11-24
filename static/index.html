@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KnowledgeHub AI · 企业知识库与混合检索平台</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #fff; --ink: #1f2937; --muted: #6b7280;
+    --line: #e5e7eb; --brand: #2563eb; --brand-dark: #1d4ed8;
+    --ok: #16a34a; --warn: #d97706; --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 span { color: var(--brand); }
+  .userbox { color: var(--muted); font-size: 13px; display: flex; gap: 12px; align-items: center; }
+  main { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; border-radius: 8px; cursor: pointer; background: #fff; border: 1px solid var(--line); font-size: 14px; }
+  .tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  textarea, input[type=text], input[type=password], select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit;
+  }
+  textarea { min-height: 72px; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  button { background: var(--brand); color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  button:hover { background: var(--brand-dark); }
+  button.secondary:hover { background: #f3f4f6; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .answer { white-space: pre-wrap; line-height: 1.7; }
+  .refused { background: #fffbeb; border: 1px solid #fcd34d; color: var(--warn); padding: 12px; border-radius: 8px; }
+  .cite { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .cite h4 { margin: 0 0 6px; font-size: 14px; }
+  .cite .meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .cite p { margin: 0; font-size: 13px; color: #374151; line-height: 1.6; }
+  .item { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .item .top { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .item .body { font-size: 14px; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+  .badge.ready { background: #ecfdf5; color: var(--ok); }
+  .badge.pending { background: #eff6ff; color: var(--brand); }
+  .badge.failed { background: #fef2f2; color: var(--danger); }
+  .login-wrap { max-width: 380px; margin: 80px auto; }
+  .hidden { display: none; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KnowledgeHub <span>AI</span></h1>
+  <div class="userbox" id="userbox"></div>
+</header>
+
+<!-- 登录 -->
+<div id="loginView" class="login-wrap card hidden">
+  <h2>登录</h2>
+  <div style="margin-top:12px">
+    <input type="text" id="loginUser" placeholder="用户名" />
+  </div>
+  <div style="margin-top:10px">
+    <input type="password" id="loginPass" placeholder="密码" />
+  </div>
+  <button style="margin-top:14px;width:100%" onclick="doLogin()">登录</button>
+  <div id="loginErr" class="err"></div>
+  <div class="muted" style="margin-top:12px">还没有账号？先在 /docs 用 POST /auth/register 注册。</div>
+</div>
+
+<!-- 主界面 -->
+<main id="appView" class="hidden">
+  <div class="tabs">
+    <div class="tab active" data-tab="ask" onclick="switchTab('ask')">智能问答</div>
+    <div class="tab" data-tab="search" onclick="switchTab('search')">混合检索</div>
+    <div class="tab" data-tab="docs" onclick="switchTab('docs')">文档管理</div>
+  </div>
+
+  <!-- 问答 -->
+  <section id="tab-ask">
+    <div class="card">
+      <textarea id="askQuery" placeholder="输入问题，例如：K100耳机断连如何恢复出厂设置？"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button onclick="doAsk()">提问</button>
+        <span class="muted">基于混合检索证据生成，证据不足会拒答。</span>
+      </div>
+    </div>
+    <div id="askResult"></div>
+  </section>
+
+  <!-- 检索 -->
+  <section id="tab-search" class="hidden">
+    <div class="card">
+      <input type="text" id="searchQuery" placeholder="输入检索词" />
+      <div class="row" style="margin-top:12px">
+        <label class="muted">策略</label>
+        <select id="searchStrategy" style="width:auto">
+          <option value="hybrid">hybrid（向量+全文 RRF 融合）</option>
+          <option value="vector">vector（向量语义）</option>
+          <option value="keyword">keyword（全文关键词）</option>
+        </select>
+        <label class="muted">Top K</label>
+        <input type="text" id="searchTopK" style="width:70px" value="5" />
+        <button onclick="doSearch()">检索</button>
+      </div>
+    </div>
+    <div id="searchResult"></div>
+  </section>
+
+  <!-- 文档 -->
+  <section id="tab-docs" class="hidden">
+    <div class="card">
+      <h3 style="margin-top:0">上传文档</h3>
+      <input type="text" id="docTitle" placeholder="标题（可留空，默认用文件名）" />
+      <div class="row" style="margin-top:10px">
+        <input type="file" id="docFile" accept=".txt,.md,.pdf,.docx" />
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button onclick="doUpload()">上传并向量化</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">文档列表</h3>
+      <table>
+        <thead><tr><th>标题</th><th>文件</th><th>类型</th><th>状态</th><th>分块数</th><th>操作</th></tr></thead>
+        <tbody id="docRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const TOKEN_KEY = 'kh_token';
+const USER_KEY = 'kh_user';
+
+function token() { return localStorage.getItem(TOKEN_KEY); }
+function setAuth(token, user) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user || {}));
+}
+function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+async function api(path, opts = {}) {
+  const headers = opts.headers || {};
+  if (token()) headers['Authorization'] = 'Bearer ' + token();
+  const resp = await fetch(path, { ...opts, headers });
+  if (resp.status === 401) { location.reload(); throw new Error('未登录'); }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
+  return data;
+}
+
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const body = new URLSearchParams({ username: u, password: p });
+  const resp = await fetch('/auth/login', { method: 'POST', body });
+  const data = await resp.json();
+  if (!resp.ok) { document.getElementById('loginErr').textContent = data.detail || '登录失败'; return; }
+  setAuth(data.access_token, data.user);
+  enterApp();
+}
+
+function enterApp() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  const user = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
+  document.getElementById('userbox').innerHTML =
+    '<span>' + (user.username || '') + '</span><button class="secondary" onclick="logout()">退出</button>';
+  loadDocs();
+}
+
+function logout() { clearAuth(); location.reload(); }
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  ['ask', 'search', 'docs'].forEach(t => document.getElementById('tab-' + t).classList.toggle('hidden', t !== name));
+  if (name === 'docs') loadDocs();
+}
+
+async function doAsk() {
+  const query = document.getElementById('askQuery').value.trim();
+  if (!query) return;
+  document.getElementById('askResult').innerHTML = '<div class="muted">检索与生成中…</div>';
+  try {
+    const data = await api('/ask', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, history: [] })
+    });
+    let html = '';
+    if (data.refused) {
+      html += '<div class="refused">证据不足，已拒答：' + escapeHtml(data.answer) + '</div>';
+    } else {
+      html += '<div class="card"><div class="answer">' + escapeHtml(data.answer) + '</div></div>';
+    }
+    if (data.citations && data.citations.length) {
+      html += '<div class="card"><h3 style="margin-top:0">引用来源（' + data.citations.length + '）</h3>' +
+        data.citations.map(citeCard).join('') + '</div>';
+    }
+    document.getElementById('askResult').innerHTML = html;
+  } catch (e) {
+    document.getElementById('askResult').innerHTML = '<div class="err">出错：' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function doSearch() {
+  const query = document.getElementById('searchQuery').value.trim();
+  if (!query) return;
+  const strategy = document.getElementById('searchStrategy').value;
+  const topK = parseInt(document.getElementById('searchTopK').value || '5', 10);
+  document.getElementById('searchResult').innerHTML = '<div class="muted">检索中…</div>';
+  try {
+    const data = await api('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, strategy, top_k: topK })
+    });
+    const html = data.results.map(r =>
+      '<div class="item"><div class="top"><span>《' + escapeHtml(r.document_title) + '》 · 分块 ' + r.chunk_id +
+      (r.page ? ' · 第 ' + r.page + ' 页' : '') + '</span><span>RRF=' + r.score.toFixed(4) + '</span></div>' +
+      '<div class="body">' + escapeHtml(r.content) + '</div></div>'
+    ).join('') || '<div class="muted">无结果</div>';
+    document.getElementById('searchResult').innerHTML = html;
+  } catch (e) {
+    document.getElementById('searchResult').innerHTML = '<div class="err">出错：' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function doUpload() {
+  const file = document.getElementById('docFile').files[0];
+  if (!file) { alert('请先选择文件'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  const title = document.getElementById('docTitle').value.trim();
+  if (title) fd.append('title', title);
+  try {
+    const data = await api('/documents/upload', { method: 'POST', body: fd });
+    alert('上传成功：' + data.title + '，分块 ' + data.chunk_count);
+    loadDocs();
+  } catch (e) { alert('上传失败：' + e.message); }
+}
+
+async function loadDocs() {
+  try {
+    const list = await api('/documents');
+    const rows = list.map(d =>
+      '<tr><td>' + escapeHtml(d.title) + '</td><td>' + escapeHtml(d.source_filename) + '</td>' +
+      '<td>' + escapeHtml(d.file_type) + '</td><td><span class="badge ' + d.status + '">' + d.status +
+      '</span></td><td>' + d.chunk_count + '</td>' +
+      '<td><button class="secondary" onclick="delDoc(' + d.id + ')">删除</button></td></tr>'
+    ).join('');
+    document.getElementById('docRows').innerHTML = rows || '<tr><td colspan="6" class="muted">暂无文档</td></tr>';
+  } catch (e) { /* 忽略 */ }
+}
+
+async function delDoc(id) {
+  if (!confirm('确认删除该文档及其分块？')) return;
+  await api('/documents/' + id, { method: 'DELETE' });
+  loadDocs();
+}
+
+function citeCard(c) {
+  return '<div class="cite"><h4>《' + escapeHtml(c.document_title) + '》</h4>' +
+    '<div class="meta">' + escapeHtml(c.source_filename || '') + (c.page ? ' · 第 ' + c.page + ' 页' : '') + '</div>' +
+    '<p>' + escapeHtml(c.snippet) + '</p></div>';
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 启动：已登录直接进主界面
+if (token()) enterApp();
+else document.getElementById('loginView').classList.remove('hidden');
+</script>
+</body>
+</html>
